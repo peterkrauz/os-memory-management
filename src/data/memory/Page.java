@@ -2,6 +2,8 @@ package data.memory;
 
 public class Page  {
 
+
+    private int id;
     /**
      * Field containing the frame that was "paired"
      * with this page.
@@ -14,7 +16,8 @@ public class Page  {
      */
     private int processId;
 
-    public Page(int size, byte[] memoryPointers) {
+    public Page(int id, int size, byte[] memoryPointers) {
+        this.id = id;
         this.processId = -1;
         frame = new Frame(size, memoryPointers);
     }
@@ -31,6 +34,10 @@ public class Page  {
 
     public int getProcessId() {
         return processId;
+    }
+
+    public int getId() {
+        return id;
     }
 
     public Frame getFrame() {
