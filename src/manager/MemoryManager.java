@@ -129,27 +129,56 @@ public class MemoryManager implements IMemoryManager {
      */
     private void allocateMemoryForProcess(int processId, int processSize) throws UnavailableProcessSpaceException {
         ProcessAllocationInfo allocationInfo = calculateProcessAllocationInfo(processSize);
+
         int numberOfPages = allocationInfo.getNumberOfPagesForProcess();
         int unfilledPageSlotsSize = allocationInfo.getUnfilledPageSlotsSize();
+
+        int slotsToFillOnLastPage = configuration.pageSize();
         Page[] allocatedPagesForProcess = new Page[numberOfPages];
 
         for (int i = 0; i < numberOfPages; i++) {
             Page currentPage = availablePages.getFirst();
 
-            int slotsToFill;
             if (i == numberOfPages - 1) {
-                slotsToFill = unfilledPageSlotsSize;
+                slotsToFillOnLastPage = unfilledPageSlotsSize;
             } else {
-                slotsToFill = configuration.pageSize();
+                slotsToFillOnLastPage = configuration.pageSize();
             }
 
-            currentPage.occupyMemorySlotsWithProcessId(slotsToFill, processId);
+            currentPage.occupyMemorySlotsWithProcessId(slotsToFillOnLastPage, processId);
             allocatedPagesForProcess[i] = availablePages.removeFirst();
         }
 
+        occupyMemorySlots(allocatedPagesForProcess, processId, slotsToFillOnLastPage);
         Process newProcess = new Process(processId, processSize, allocatedPagesForProcess);
         int newProcessIndex = calculateAvailableProcessIndex();
         runningProcesses[newProcessIndex] = newProcess;
+    }
+
+    /**
+     *
+     * This method forcefully writes the processId onto each occupied
+     * raw memory slot. This must be done since Java does not support
+     * pass by reference.
+     *  @param allocatedPages the array of pages that were allocated beforehand
+     * @param processId the id that will be written onto these slots
+     * @param slotsToFillOnLastPage
+     *
+     */
+    private void occupyMemorySlots(Page[] allocatedPages, int processId, int slotsToFillOnLastPage) {
+        for (int i = 0; i < allocatedPages.length; i++) {
+            int startingIndex = calculateMemoryIndexForPage(allocatedPages[i]) * configuration.pageSize();
+
+            int displacement;
+            if (i == allocatedPages.length - 1) {
+                displacement = slotsToFillOnLastPage;
+            } else {
+                displacement = configuration.pageSize();
+            }
+            for (int d = 0; d < displacement; d++) {
+                rawMemory[startingIndex + d] = (byte) processId;
+            }
+        }
     }
 
     @Override
@@ -240,7 +269,7 @@ public class MemoryManager implements IMemoryManager {
     private void initializePages(int numberOfPages, byte[][] pageToMemoryPointers) {
         logicalMemory = new Page[numberOfPages];
         for (int i = 0; i < logicalMemory.length; i++) {
-            logicalMemory[i] = new Page(configuration.pageSize(), pageToMemoryPointers[i]);
+            logicalMemory[i] = new Page(i, configuration.pageSize(), pageToMemoryPointers[i]);
             availablePages.addLast(logicalMemory[i]);
         }
     }
@@ -296,6 +325,10 @@ public class MemoryManager implements IMemoryManager {
 
     private int calculatePageNumberForMemoryIndex(int index) {
         return index / configuration.pageSize();
+    }
+
+    private int calculateMemoryIndexForPage(Page page) {
+        return page.getId();
     }
 
     private int calculatePageIndexForMemoryIndex(int index) {
