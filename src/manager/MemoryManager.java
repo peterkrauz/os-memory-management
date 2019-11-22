@@ -133,23 +133,23 @@ public class MemoryManager implements IMemoryManager {
         int numberOfPages = allocationInfo.getNumberOfPagesForProcess();
         int unfilledPageSlotsSize = allocationInfo.getUnfilledPageSlotsSize();
 
-        int slotsToFillOnLastPage = configuration.pageSize();
+        int slotsToFill = configuration.pageSize();
         Page[] allocatedPagesForProcess = new Page[numberOfPages];
 
         for (int i = 0; i < numberOfPages; i++) {
             Page currentPage = availablePages.getFirst();
 
             if (i == numberOfPages - 1) {
-                slotsToFillOnLastPage = unfilledPageSlotsSize;
+                slotsToFill = unfilledPageSlotsSize;
             } else {
-                slotsToFillOnLastPage = configuration.pageSize();
+                slotsToFill = configuration.pageSize();
             }
 
-            currentPage.occupyMemorySlotsWithProcessId(slotsToFillOnLastPage, processId);
+            currentPage.occupyMemorySlotsWithProcessId(slotsToFill, processId);
             allocatedPagesForProcess[i] = availablePages.removeFirst();
         }
 
-        occupyMemorySlots(allocatedPagesForProcess, processId, slotsToFillOnLastPage);
+        occupyMemorySlots(allocatedPagesForProcess, processId, slotsToFill);
         Process newProcess = new Process(processId, processSize, allocatedPagesForProcess);
         int newProcessIndex = calculateAvailableProcessIndex();
         runningProcesses[newProcessIndex] = newProcess;
