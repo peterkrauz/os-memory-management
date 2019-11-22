@@ -8,14 +8,14 @@ public class Frame {
      */
     byte[] occupiedMemorySlots;
 
-    public Frame(int size, byte[] memoryPointers) {
+    public Frame(int size) {
         occupiedMemorySlots = new byte[size];
-        initializeSlots(memoryPointers);
+        initializeSlots();
     }
 
-    private void initializeSlots(byte[] memoryPointers) {
+    private void initializeSlots() {
         for (int i = 0; i < occupiedMemorySlots.length; i++) {
-            occupiedMemorySlots[i] = memoryPointers[i];
+            occupiedMemorySlots[i] = -1;
         }
     }
 

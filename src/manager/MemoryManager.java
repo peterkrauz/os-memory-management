@@ -160,7 +160,7 @@ public class MemoryManager implements IMemoryManager {
      * This method forcefully writes the processId onto each occupied
      * raw memory slot. This must be done since Java does not support
      * pass by reference.
-     *  @param allocatedPages the array of pages that were allocated beforehand
+     * @param allocatedPages the array of pages that were allocated beforehand
      * @param processId the id that will be written onto these slots
      * @param slotsToFillOnLastPage
      *
@@ -182,7 +182,7 @@ public class MemoryManager implements IMemoryManager {
     }
 
     @Override
-    public void showPageTableForProcess(int processId) {
+    public void showPageTableForProcess(int processId) throws UnsupportedIdException {
         for (int i = 0; i < runningProcesses.length; i++) {
             Process currentProcess = runningProcesses[i];
             try {
@@ -190,6 +190,7 @@ public class MemoryManager implements IMemoryManager {
                     displayPageTableForProcess(currentProcess.getPageTable());
                     return;
                 }
+                throw new UnsupportedIdException();
             } catch (NullPointerException ex) {
                 controller.print("Oops! Apparently, there are no processes with id: " + processId);
             }
@@ -253,8 +254,7 @@ public class MemoryManager implements IMemoryManager {
         }
 
         int numberOfPages = configuration.memorySize() / configuration.pageSize();
-        byte[][] pageToMemoryPointers = getMemoryMatrix();
-        initializePages(numberOfPages, pageToMemoryPointers);
+        initializePages(numberOfPages);
     }
 
     /**
@@ -263,13 +263,12 @@ public class MemoryManager implements IMemoryManager {
      * and by doing so makes all frames have -1 as value
      *
      * @param numberOfPages the number of pages that exist during this runtime
-     * @param pageToMemoryPointers
      *
      */
-    private void initializePages(int numberOfPages, byte[][] pageToMemoryPointers) {
+    private void initializePages(int numberOfPages) {
         logicalMemory = new Page[numberOfPages];
         for (int i = 0; i < logicalMemory.length; i++) {
-            logicalMemory[i] = new Page(i, configuration.pageSize(), pageToMemoryPointers[i]);
+            logicalMemory[i] = new Page(i, configuration.pageSize());
             availablePages.addLast(logicalMemory[i]);
         }
     }
@@ -333,20 +332,6 @@ public class MemoryManager implements IMemoryManager {
 
     private int calculatePageIndexForMemoryIndex(int index) {
         return index % configuration.pageSize();
-    }
-
-    private byte[][] getMemoryMatrix() {
-        int pageSize = configuration.pageSize();
-        int numberOfPages = configuration.memorySize() / pageSize;
-        byte[][] memoryMatrix = new byte[numberOfPages][pageSize];
-
-        for (int i = 0; i < rawMemory.length; i++) {
-            int pageIndex = calculatePageNumberForMemoryIndex(i);
-            int displacement = calculatePageIndexForMemoryIndex(i);
-            memoryMatrix[pageIndex][displacement] = rawMemory[i];
-        }
-
-        return memoryMatrix;
     }
 
     @Deprecated()

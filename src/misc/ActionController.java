@@ -32,7 +32,11 @@ public class ActionController {
                 break;
             case VIEW_PROCESS_MEMORY:
                 int processId = interfaceManager.getInfoForViewingProcessMemory();
-                memoryManager.showPageTableForProcess(processId);
+                try {
+                    memoryManager.showPageTableForProcess(processId);
+                } catch (Exception ex) {
+                    interfaceManager.print(ex.getMessage());
+                }
                 break;
         }
     }

@@ -16,10 +16,10 @@ public class Page  {
      */
     private int processId;
 
-    public Page(int id, int size, byte[] memoryPointers) {
+    public Page(int id, int size) {
         this.id = id;
         this.processId = -1;
-        frame = new Frame(size, memoryPointers);
+        frame = new Frame(size);
     }
 
     public void occupyMemorySlotsWithProcessId(int slots, int processId) {
