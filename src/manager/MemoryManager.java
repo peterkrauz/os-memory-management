@@ -1,5 +1,6 @@
 package manager;
 
+import data.memory.Frame;
 import data.memory.Page;
 import data.process.Process;
 import error.InsufficientMemoryException;
@@ -10,24 +11,28 @@ import misc.ActionController;
 import misc.Configuration;
 import data.process.ProcessAllocationInfo;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.Map;
 
 public class MemoryManager implements IMemoryManager {
 
     private ActionController controller;
     private Configuration configuration;
     private StringBuilder builder;
-
-    private byte[] rawMemory;
-    private Page[] logicalMemory;
-    private LinkedList<Page> availablePages;
-    private Process[] runningProcesses;
     private int lastProcessId;
+    // TODO("check if i can remove the field below heheheh")
+    private Frame[] frames;
+    private byte[] rawMemory;
+    private Process[] runningProcesses;
+    private LinkedList<Frame> availableFrames;
+    private Map<Page, Frame> pageTable;
 
     public MemoryManager(ActionController controller) {
         this.controller = controller;
-        availablePages = new LinkedList<>();
+        availableFrames = new LinkedList<>();
         builder = new StringBuilder();
+        pageTable = new LinkedHashMap<>();
     }
 
     @Override
@@ -35,7 +40,7 @@ public class MemoryManager implements IMemoryManager {
         int lastPageNumber = 0;
         for (int i = 0; i < rawMemory.length; i++) {
             byte currentMemorySlot = rawMemory[i];
-            int pageNumber = calculatePageNumberForMemoryIndex(i);
+            int pageNumber = calculateFrameIndexForMemoryIndex(i);
 
             if (lastPageNumber != pageNumber) {
                 lastPageNumber = pageNumber;
@@ -43,7 +48,7 @@ public class MemoryManager implements IMemoryManager {
             }
 
             builder.append("\t\t\t----\n");
-            builder.append("Page " + pageNumber +": \t|");
+            builder.append("Frame ").append(pageNumber).append(": \t|");
             builder.append(currentMemorySlot);
             builder.append("|\n");
 
@@ -62,7 +67,7 @@ public class MemoryManager implements IMemoryManager {
         checkHasMemoryForAllocatingProcess(processSize);
         int pid = checkProcessId(processId);
 
-        allocateMemoryForProcess(pid, processSize);
+        allocateProcessIntoMemory(pid, processSize);
     }
 
     /**
@@ -94,7 +99,7 @@ public class MemoryManager implements IMemoryManager {
      */
     private void checkHasMemoryForAllocatingProcess(int size) throws InsufficientMemoryException {
         int numberOfPagesForProcess = calculateProcessAllocationInfo(size).getNumberOfPagesForProcess();
-        if (availablePages.size() < numberOfPagesForProcess) {
+        if (availableFrames.size() < numberOfPagesForProcess) {
             throw new InsufficientMemoryException();
         }
     }
@@ -127,32 +132,36 @@ public class MemoryManager implements IMemoryManager {
      * @param processSize the size of the process, in bytes
      *
      */
-    private void allocateMemoryForProcess(int processId, int processSize) throws UnavailableProcessSpaceException {
+    private void allocateProcessIntoMemory(int processId, int processSize) throws Exception {
         ProcessAllocationInfo allocationInfo = calculateProcessAllocationInfo(processSize);
 
         int numberOfPages = allocationInfo.getNumberOfPagesForProcess();
         int unfilledPageSlotsSize = allocationInfo.getUnfilledPageSlotsSize();
 
+        Process newProcess = new Process(processId, processSize);
         int slotsToFill = configuration.pageSize();
         Page[] allocatedPagesForProcess = new Page[numberOfPages];
 
         for (int i = 0; i < numberOfPages; i++) {
-            Page currentPage = availablePages.getFirst();
+            Frame currentFrame = availableFrames.getFirst();
 
             if (i == numberOfPages - 1) {
                 slotsToFill = unfilledPageSlotsSize;
-            } else {
-                slotsToFill = configuration.pageSize();
             }
 
-            currentPage.occupyMemorySlotsWithProcessId(slotsToFill, processId);
-            allocatedPagesForProcess[i] = availablePages.removeFirst();
+            currentFrame.occupyMemorySlotsWithProcessId(slotsToFill, processId);
+            // todo: remove process id from page
+            Page pageForProcess = new Page(configuration.pageSize());
+            Frame correspondingFrame = availableFrames.removeFirst();
+            pageTable.put(pageForProcess, correspondingFrame);
+
+            allocatedPagesForProcess[i] = pageForProcess;
         }
 
-        occupyMemorySlots(allocatedPagesForProcess, processId, slotsToFill);
-        Process newProcess = new Process(processId, processSize, allocatedPagesForProcess);
+        newProcess.setPageTable(allocatedPagesForProcess);
         int newProcessIndex = calculateAvailableProcessIndex();
         runningProcesses[newProcessIndex] = newProcess;
+        occupyMemorySlots(processId, slotsToFill);
     }
 
     /**
@@ -160,41 +169,57 @@ public class MemoryManager implements IMemoryManager {
      * This method forcefully writes the processId onto each occupied
      * raw memory slot. This must be done since Java does not support
      * pass by reference.
-     * @param allocatedPages the array of pages that were allocated beforehand
      * @param processId the id that will be written onto these slots
-     * @param slotsToFillOnLastPage
      *
      */
-    private void occupyMemorySlots(Page[] allocatedPages, int processId, int slotsToFillOnLastPage) {
-        for (int i = 0; i < allocatedPages.length; i++) {
-            int startingIndex = calculateMemoryIndexForPage(allocatedPages[i]) * configuration.pageSize();
+    private void occupyMemorySlots(int processId, int slotsToFillOnLastPage) throws UnsupportedIdException {
+        Process process = getProcessById(processId);
+        Page[] pagesForProcess = process.getPageTable();
+
+        for (int i = 0; i < pagesForProcess.length; i++) {
+            int startingIndex = getBaseStartingIndexForProcess(process, i);
 
             int displacement;
-            if (i == allocatedPages.length - 1) {
+            if (i == pagesForProcess.length - 1) {
                 displacement = slotsToFillOnLastPage;
             } else {
                 displacement = configuration.pageSize();
             }
+
             for (int d = 0; d < displacement; d++) {
                 rawMemory[startingIndex + d] = (byte) processId;
             }
         }
     }
 
-    @Override
-    public void showPageTableForProcess(int processId) throws UnsupportedIdException {
-        for (int i = 0; i < runningProcesses.length; i++) {
-            Process currentProcess = runningProcesses[i];
-            try {
-                if (currentProcess.getId() == processId) {
-                    displayPageTableForProcess(currentProcess.getPageTable());
-                    return;
-                }
-                throw new UnsupportedIdException();
-            } catch (NullPointerException ex) {
-                controller.print("Oops! Apparently, there are no processes with id: " + processId);
+    private int getBaseStartingIndexForProcess(Process process, int currentPageIndex) {
+        int startingPosition = 0;
+
+        for (Process currentProcess : runningProcesses) {
+            if (currentProcess.getId() != process.getId()) {
+                int numberOfPages = calculateProcessAllocationInfo(currentProcess.getSize()).getNumberOfPagesForProcess();
+                startingPosition += numberOfPages * configuration.pageSize();
+            } else {
+                return startingPosition + (currentPageIndex * configuration.pageSize());
             }
         }
+
+        return startingPosition;
+    }
+
+    @Override
+    public void showPageTableForProcess(int processId) throws UnsupportedIdException {
+        Process processToBeShown = getProcessById(processId);
+        displayPageTableForProcess(processToBeShown.getPageTable());
+    }
+
+    private Process getProcessById(int processId) throws UnsupportedIdException {
+        for (Process runningProcess : runningProcesses) {
+            if (runningProcess.getId() == processId) {
+                return runningProcess;
+            }
+        }
+        throw new UnsupportedIdException();
     }
 
     /**
@@ -202,28 +227,41 @@ public class MemoryManager implements IMemoryManager {
      * This method displays the array of pages that were
      * allocated for this process.
      *
-     * @param pageTable the array of pages to be shown
+     * @param processPages the array of pages to be shown
      *
      */
-    private void displayPageTableForProcess(Page[] pageTable) {
-        for (int i = 0; i < pageTable.length; i++) {
-            Page currentPage = pageTable[i];
-            byte[] pageSlots = currentPage.getFrame().getSlots();
+    private void displayPageTableForProcess(Page[] processPages) {
+        int lastPageNumber = 0;
+        for (int i = 0; i < processPages.length; i++) {
+            if (lastPageNumber != i) {
+                lastPageNumber = i;
+                builder.append("\n");
+            }
 
-            for (int slotIndex = 0; slotIndex < pageSlots.length; slotIndex++) {
-                int indexToDisplay = slotIndex + (i * configuration.pageSize());
+            Page currentPage = processPages[i];
+            Frame correspondingFrame = pageTable.get(currentPage);
+            byte[] memorySlots = correspondingFrame.getSlots();
+            int frameIndex = getMemoryFrameIndexForFrame(correspondingFrame);
 
-                builder
-                        .append("\t\t\t\t\t-----\n")
-                        .append("Slot number: " + indexToDisplay + "\t\t| ")
-                        .append(currentPage.getFrame().getByteAt(slotIndex))
-                        .append(" |\n");
+            for (int memSlot = 0; memSlot < memorySlots.length; memSlot++) {
+
+                builder.append("\t\t\t\t\t-----\n");
+                builder.append("Page:").append(i).append(", Frame:").append(frameIndex).append(": \t| ");
+                builder.append(memorySlots[memSlot]).append(" |\n");
             }
         }
-        builder.append("\t\t\t\t\t-----");
 
         controller.print(builder.toString());
         clearStringBuilder();
+    }
+
+    private int getMemoryFrameIndexForFrame(Frame frame) {
+        for (int i = 0; i < frames.length; i++) {
+            if (frames[i].equals(frame)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     /**
@@ -253,8 +291,8 @@ public class MemoryManager implements IMemoryManager {
             rawMemory[i] = -1;
         }
 
-        int numberOfPages = configuration.memorySize() / configuration.pageSize();
-        initializePages(numberOfPages);
+        int numberOfFrames = configuration.memorySize() / configuration.pageSize();
+        initializeFrames(numberOfFrames);
     }
 
     /**
@@ -262,14 +300,14 @@ public class MemoryManager implements IMemoryManager {
      * This method creates the logical memory array
      * and by doing so makes all frames have -1 as value
      *
-     * @param numberOfPages the number of pages that exist during this runtime
+     * @param numberOfFrames the number of pages that exist during this runtime
      *
      */
-    private void initializePages(int numberOfPages) {
-        logicalMemory = new Page[numberOfPages];
-        for (int i = 0; i < logicalMemory.length; i++) {
-            logicalMemory[i] = new Page(i, configuration.pageSize());
-            availablePages.addLast(logicalMemory[i]);
+    private void initializeFrames(int numberOfFrames) {
+        frames = new Frame[numberOfFrames];
+        for (int i = 0; i < numberOfFrames; i++) {
+            frames[i] = new Frame(configuration.pageSize());
+            availableFrames.addLast(frames[i]);
         }
     }
 
@@ -322,38 +360,7 @@ public class MemoryManager implements IMemoryManager {
         builder.setLength(0);
     }
 
-    private int calculatePageNumberForMemoryIndex(int index) {
+    private int calculateFrameIndexForMemoryIndex(int index) {
         return index / configuration.pageSize();
-    }
-
-    private int calculateMemoryIndexForPage(Page page) {
-        return page.getId();
-    }
-
-    private int calculatePageIndexForMemoryIndex(int index) {
-        return index % configuration.pageSize();
-    }
-
-    @Deprecated()
-    private <T> void composeDisplayFor(T[] arrayToIterate) {
-        for (int i = 0; i < arrayToIterate.length; i++) {
-            T currentItem = arrayToIterate[i];
-
-            builder.append("----").append("|");
-
-            if (currentItem.getClass().isInstance(Page.class)) {
-                builder
-                        .append(((Page) currentItem).getProcessId());
-            } else {
-                builder
-                        .append(currentItem);
-            }
-
-            builder.append("|");
-
-            if (i == arrayToIterate.length - 1) {
-                builder.append("----");
-            }
-        }
     }
 }
