@@ -21,7 +21,7 @@ public class MemoryManager implements IMemoryManager {
     private Configuration configuration;
     private StringBuilder builder;
     private int lastProcessId;
-    // TODO("check if i can remove the field below heheheh")
+
     private Frame[] frames;
     private byte[] rawMemory;
     private Process[] runningProcesses;
@@ -63,8 +63,8 @@ public class MemoryManager implements IMemoryManager {
 
     @Override
     public void createProcess(int processId, int processSize) throws Exception {
-        checkProcessFitsIntoMemory(processSize);
         checkHasMemoryForAllocatingProcess(processSize);
+        checkProcessFitsIntoMemory(processSize);
         int pid = checkProcessId(processId);
 
         allocateProcessIntoMemory(pid, processSize);
@@ -158,7 +158,7 @@ public class MemoryManager implements IMemoryManager {
             allocatedPagesForProcess[i] = pageForProcess;
         }
 
-        newProcess.setPageTable(allocatedPagesForProcess);
+        newProcess.setProcessPages(allocatedPagesForProcess);
         int newProcessIndex = calculateAvailableProcessIndex();
         runningProcesses[newProcessIndex] = newProcess;
         occupyMemorySlots(processId, slotsToFill);
@@ -174,7 +174,7 @@ public class MemoryManager implements IMemoryManager {
      */
     private void occupyMemorySlots(int processId, int slotsToFillOnLastPage) throws UnsupportedIdException {
         Process process = getProcessById(processId);
-        Page[] pagesForProcess = process.getPageTable();
+        Page[] pagesForProcess = process.getProcessPages();
 
         for (int i = 0; i < pagesForProcess.length; i++) {
             int startingIndex = getBaseStartingIndexForProcess(process, i);
@@ -210,7 +210,7 @@ public class MemoryManager implements IMemoryManager {
     @Override
     public void showPageTableForProcess(int processId) throws UnsupportedIdException {
         Process processToBeShown = getProcessById(processId);
-        displayPageTableForProcess(processToBeShown.getPageTable());
+        displayPageTableForProcess(processToBeShown.getProcessPages());
     }
 
     private Process getProcessById(int processId) throws UnsupportedIdException {
@@ -276,7 +276,7 @@ public class MemoryManager implements IMemoryManager {
     public void storeConfiguration(Configuration configuration) {
         this.configuration = configuration;
         initializeMemories();
-        runningProcesses = new Process[configuration.memorySize() / configuration.maxProcessSize()];
+        runningProcesses = new Process[configuration.memorySize() / configuration.pageSize()];
     }
 
     /**
@@ -327,8 +327,13 @@ public class MemoryManager implements IMemoryManager {
 
         if (unfilledPageSlotsSize == 0) {
             numberOfPagesForProcess = processSize / configuration.pageSize();
+            unfilledPageSlotsSize = configuration.pageSize();
         } else {
             numberOfPagesForProcess = (processSize / configuration.pageSize()) + 1;
+        }
+
+        if (numberOfPagesForProcess == 0) {
+            numberOfPagesForProcess++;
         }
 
         return new ProcessAllocationInfo(numberOfPagesForProcess, unfilledPageSlotsSize);

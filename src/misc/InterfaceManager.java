@@ -63,11 +63,7 @@ public class InterfaceManager {
 
         print("Thank you! Now, enjoy the ride.");
 
-        try {
-            Thread.sleep(1500);
-        } catch (Exception ex) {
-            print(ex.getMessage());
-        }
+        delay();
         clean();
     }
 
@@ -160,5 +156,13 @@ public class InterfaceManager {
         print("\n\n\n\n\n\n\n\n\n\n");
         print("\n\n\n\n\n\n\n\n\n\n");
         print("\n\n\n\n\n\n\n\n\n\n");
+    }
+
+    private void delay() {
+        try {
+            Thread.sleep(1500);
+        } catch (Exception ex) {
+            print(ex.getMessage());
+        }
     }
 }

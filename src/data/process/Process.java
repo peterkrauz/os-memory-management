@@ -6,7 +6,7 @@ public class Process {
 
     private int id;
     private int size;
-    private Page[] pageTable;
+    private Page[] processPages;
 
     public Process(int id, int size) {
         this.id = id;
@@ -21,11 +21,11 @@ public class Process {
         return size;
     }
 
-    public Page[] getPageTable() {
-        return pageTable;
+    public Page[] getProcessPages() {
+        return processPages;
     }
 
-    public void setPageTable(Page[] pageTable) {
-        this.pageTable = pageTable;
+    public void setProcessPages(Page[] processPages) {
+        this.processPages = processPages;
     }
 }
